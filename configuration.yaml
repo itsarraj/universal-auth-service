@@ -1,0 +1,20 @@
+application_host: "127.0.0.1"
+application_port: 8000
+
+database:
+  host: "127.0.0.1"
+  port: 5432
+  username: "cesium"
+  password: ""
+  database_name: "uas"
+
+redis:
+  host: "127.0.0.1"
+  port: 6379
+  password: null
+  database: null
+
+jwt:
+  secret: "your-super-secret-jwt-key-change-this-in-production"
+  access_token_expiration_hours: 24
+  refresh_token_expiration_days: 30
