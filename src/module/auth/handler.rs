@@ -1,56 +1,18 @@
 use actix_web::{web, HttpResponse, Responder, HttpRequest};
-use crate::{DbPool, RedisPool};
+use std::sync::Arc;
 use crate::module::auth::{
     model::*,
     service::AuthService,
-    repository::*,
-    cache::AuthCache,
 };
 
-// ===== SHARED SERVICE INITIALIZATION =====
-
-fn create_auth_service(
-    pool: &web::Data<DbPool>,
-    redis: &web::Data<RedisPool>,
-) -> AuthService {
-    let user_repo = UserRepository::new(pool.get_ref().clone());
-    let refresh_token_repo = RefreshTokenRepository::new(pool.get_ref().clone());
-    let blacklist_repo = TokenBlacklistRepository::new(pool.get_ref().clone());
-    let cache = AuthCache::new(redis.get_ref().clone());
-
-    // TODO: Get these from configuration
-    let jwt_secret = std::env::var("JWT_SECRET")
-        .unwrap_or_else(|_| "your-super-secret-jwt-key-change-this-in-production".to_string());
-    let jwt_access_expiration_hours = std::env::var("JWT_ACCESS_EXPIRATION_HOURS")
-        .unwrap_or_else(|_| "24".to_string())
-        .parse::<i64>()
-        .unwrap_or(24);
-    let jwt_refresh_expiration_days = std::env::var("JWT_REFRESH_EXPIRATION_DAYS")
-        .unwrap_or_else(|_| "30".to_string())
-        .parse::<i64>()
-        .unwrap_or(30);
-
-    AuthService::new(
-        user_repo,
-        refresh_token_repo,
-        blacklist_repo,
-        cache,
-        jwt_secret,
-        jwt_access_expiration_hours,
-        jwt_refresh_expiration_days,
-    )
-}
 
 // ===== AUTH ENDPOINTS =====
 
 // POST /api/v1/auth/register
 pub async fn register(
-    pool: web::Data<DbPool>,
-    redis: web::Data<RedisPool>,
+    auth_service: web::Data<Arc<AuthService>>,
     request: web::Json<RegisterRequest>
 ) -> impl Responder {
-    let auth_service = create_auth_service(&pool, &redis);
-
     match auth_service.register(request.into_inner()).await {
         Ok(response) => HttpResponse::Created().json(response),
         Err(AuthError::UserAlreadyExists) => HttpResponse::Conflict().json(ErrorResponse {
@@ -70,12 +32,9 @@ pub async fn register(
 
 // POST /api/v1/auth/login
 pub async fn login(
-    pool: web::Data<DbPool>,
-    redis: web::Data<RedisPool>,
+    auth_service: web::Data<Arc<AuthService>>,
     request: web::Json<LoginRequest>
 ) -> impl Responder {
-    let auth_service = create_auth_service(&pool, &redis);
-
     match auth_service.login(request.into_inner()).await {
         Ok(response) => HttpResponse::Ok().json(response),
         Err(AuthError::InvalidCredentials) => HttpResponse::Unauthorized().json(ErrorResponse {
@@ -99,12 +58,9 @@ pub async fn login(
 
 // POST /api/v1/auth/refresh
 pub async fn refresh_token(
-    pool: web::Data<DbPool>,
-    redis: web::Data<RedisPool>,
+    auth_service: web::Data<Arc<AuthService>>,
     request: web::Json<RefreshTokenRequest>
 ) -> impl Responder {
-    let auth_service = create_auth_service(&pool, &redis);
-
     match auth_service.refresh_token(request.into_inner()).await {
         Ok(response) => HttpResponse::Ok().json(response),
         Err(AuthError::InvalidToken) => HttpResponse::Unauthorized().json(ErrorResponse {
@@ -127,8 +83,7 @@ pub async fn refresh_token(
 
 // POST /api/v1/auth/logout
 pub async fn logout(
-    pool: web::Data<DbPool>,
-    redis: web::Data<RedisPool>,
+    auth_service: web::Data<Arc<AuthService>>,
     req: HttpRequest,
     request: web::Json<LogoutRequest>
 ) -> impl Responder {
@@ -161,7 +116,6 @@ pub async fn logout(
 
     let token = &auth_str[7..]; // Remove "Bearer " prefix
 
-    let auth_service = create_auth_service(&pool, &redis);
 
     // Validate token and extract user ID
     let claims = match auth_service.validate_token(token).await {
@@ -212,12 +166,10 @@ pub async fn logout(
 
 // GET /api/v1/auth/verify-email/{token}
 pub async fn verify_email(
-    pool: web::Data<DbPool>,
-    redis: web::Data<RedisPool>,
+    auth_service: web::Data<Arc<AuthService>>,
     path: web::Path<String>
 ) -> impl Responder {
     let token = path.into_inner();
-    let auth_service = create_auth_service(&pool, &redis);
 
     match auth_service.verify_email(&token).await {
         Ok(_) => HttpResponse::Ok().json(serde_json::json!({
@@ -236,11 +188,9 @@ pub async fn verify_email(
 
 // POST /api/v1/auth/password-reset
 pub async fn request_password_reset(
-    pool: web::Data<DbPool>,
-    redis: web::Data<RedisPool>,
+    auth_service: web::Data<Arc<AuthService>>,
     request: web::Json<RequestPasswordResetRequest>
 ) -> impl Responder {
-    let auth_service = create_auth_service(&pool, &redis);
 
     match auth_service.request_password_reset(request.into_inner()).await {
         Ok(_) => HttpResponse::Ok().json(serde_json::json!({
@@ -255,11 +205,9 @@ pub async fn request_password_reset(
 
 // POST /api/v1/auth/password-reset/confirm
 pub async fn reset_password(
-    pool: web::Data<DbPool>,
-    redis: web::Data<RedisPool>,
+    auth_service: web::Data<Arc<AuthService>>,
     request: web::Json<ResetPasswordRequest>
 ) -> impl Responder {
-    let auth_service = create_auth_service(&pool, &redis);
 
     match auth_service.reset_password(request.into_inner()).await {
         Ok(_) => HttpResponse::Ok().json(serde_json::json!({
@@ -284,8 +232,7 @@ pub async fn reset_password(
 
 // GET /api/v1/user/profile
 pub async fn get_profile(
-    pool: web::Data<DbPool>,
-    redis: web::Data<RedisPool>,
+    auth_service: web::Data<Arc<AuthService>>,
     req: HttpRequest
 ) -> impl Responder {
     // Extract and validate JWT token
@@ -317,7 +264,6 @@ pub async fn get_profile(
 
     let token = &auth_str[7..]; // Remove "Bearer " prefix
 
-    let auth_service = create_auth_service(&pool, &redis);
 
     // Validate token and extract user ID
     let claims = match auth_service.validate_token(token).await {
@@ -367,8 +313,7 @@ pub async fn get_profile(
 
 // PUT /api/v1/user/profile
 pub async fn update_profile(
-    pool: web::Data<DbPool>,
-    redis: web::Data<RedisPool>,
+    auth_service: web::Data<Arc<AuthService>>,
     req: HttpRequest,
     request: web::Json<UpdateProfileRequest>
 ) -> impl Responder {
@@ -401,7 +346,6 @@ pub async fn update_profile(
 
     let token = &auth_str[7..]; // Remove "Bearer " prefix
 
-    let auth_service = create_auth_service(&pool, &redis);
 
     // Validate token and extract user ID
     let claims = match auth_service.validate_token(token).await {
@@ -449,8 +393,7 @@ pub async fn update_profile(
 
 // POST /api/v1/user/change-password
 pub async fn change_password(
-    pool: web::Data<DbPool>,
-    redis: web::Data<RedisPool>,
+    auth_service: web::Data<Arc<AuthService>>,
     req: HttpRequest,
     request: web::Json<ChangePasswordRequest>
 ) -> impl Responder {
@@ -483,7 +426,6 @@ pub async fn change_password(
 
     let token = &auth_str[7..]; // Remove "Bearer " prefix
 
-    let auth_service = create_auth_service(&pool, &redis);
 
     // Validate token and extract user ID
     let claims = match auth_service.validate_token(token).await {
@@ -541,8 +483,7 @@ pub async fn change_password(
 
 // GET /api/v1/admin/users
 pub async fn admin_get_users(
-    pool: web::Data<DbPool>,
-    redis: web::Data<RedisPool>,
+    auth_service: web::Data<Arc<AuthService>>,
     req: HttpRequest
 ) -> impl Responder {
     // Extract and validate JWT token
@@ -574,7 +515,6 @@ pub async fn admin_get_users(
 
     let token = &auth_str[7..]; // Remove "Bearer " prefix
 
-    let auth_service = create_auth_service(&pool, &redis);
 
     // Validate token and check admin role
     let claims = match auth_service.validate_token(token).await {

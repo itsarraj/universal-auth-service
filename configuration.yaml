@@ -18,3 +18,9 @@ jwt:
   secret: "your-super-secret-jwt-key-change-this-in-production"
   access_token_expiration_hours: 24
   refresh_token_expiration_days: 30
+
+email:
+  api_key: "re_KQyZNcM7_LgyWv4HAvNBp6E3ckUA8KfPn"
+  from_email: "noreply@resend.dev"
+  from_name: "Universal Auth Service"
+  base_url: "http://localhost:8000"

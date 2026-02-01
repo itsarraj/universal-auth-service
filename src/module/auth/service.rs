@@ -10,12 +10,14 @@ use crate::module::auth::{
     repository::*,
     cache::*,
 };
+use crate::module::email::service::EmailService;
 
 pub struct AuthService {
     user_repo: Arc<UserRepository>,
     refresh_token_repo: Arc<RefreshTokenRepository>,
     blacklist_repo: Arc<TokenBlacklistRepository>,
     cache: Arc<AuthCache>,
+    email_service: Arc<EmailService>,
     jwt_secret: String,
     access_token_expiration_hours: i64,
     refresh_token_expiration_days: i64,
@@ -27,6 +29,7 @@ impl AuthService {
         refresh_token_repo: RefreshTokenRepository,
         blacklist_repo: TokenBlacklistRepository,
         cache: AuthCache,
+        email_service: EmailService,
         jwt_secret: String,
         access_token_expiration_hours: i64,
         refresh_token_expiration_days: i64,
@@ -36,6 +39,7 @@ impl AuthService {
             refresh_token_repo: Arc::new(refresh_token_repo),
             blacklist_repo: Arc::new(blacklist_repo),
             cache: Arc::new(cache),
+            email_service: Arc::new(email_service),
             jwt_secret,
             access_token_expiration_hours,
             refresh_token_expiration_days,
@@ -78,11 +82,17 @@ impl AuthService {
 
         self.user_repo.create_user(&user).await?;
 
+        // Send verification email
+        if let Err(e) = self.email_service.send_verification_email(&user.email, &verification_token).await {
+            eprintln!("Failed to send verification email: {:?}", e);
+            // Don't fail registration if email fails, but log it
+        }
+
         Ok(RegisterResponse {
             user_id: user.id,
             email: user.email,
             email_verification_token: verification_token,
-            message: "User registered successfully. Please verify your email.".to_string(),
+            message: "User registered successfully. Please check your email to verify your account.".to_string(),
         })
     }
 
@@ -262,12 +272,12 @@ impl AuthService {
         let expires_at = Utc::now() + Duration::hours(1); // 1 hour expiry
 
         self.user_repo.update_password_reset_token(user.id, &reset_token, expires_at).await?;
-        
-        // println!("DEBUG: Reset token: {}", reset_token);
-        // println!("DEBUG: Expires at: {}", expires_at.naive_utc());
 
-        // TODO: Send email with reset token
-        // For now, we'll just store it
+        // Send password reset email
+        if let Err(e) = self.email_service.send_password_reset_email(&user.email, &reset_token).await {
+            eprintln!("Failed to send password reset email: {:?}", e);
+            // Don't fail the request if email fails, but log it
+        }
 
         Ok(())
     }

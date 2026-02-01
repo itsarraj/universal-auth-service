@@ -8,6 +8,7 @@ use crate::module::auth::{
     repository::{UserRepository, RefreshTokenRepository, TokenBlacklistRepository},
     cache::AuthCache,
 };
+use crate::module::email::service::EmailService;
 use crate::{DbPool, RedisPool};
 
 pub fn config(
@@ -15,7 +16,16 @@ pub fn config(
     pool: web::Data<DbPool>,
     redis: web::Data<RedisPool>,
     jwt_config: crate::configuration::JwtSettings,
+    email_config: crate::configuration::EmailSettings,
 ) {
+    // Create shared email service
+    let email_service = EmailService::new(
+        email_config.api_key.clone(),
+        email_config.from_email.clone(),
+        email_config.from_name.clone(),
+        email_config.base_url.clone(),
+    );
+
     // Create shared auth service
     let user_repo = UserRepository::new(pool.get_ref().clone());
     let refresh_token_repo = RefreshTokenRepository::new(pool.get_ref().clone());
@@ -27,6 +37,7 @@ pub fn config(
         refresh_token_repo,
         blacklist_repo,
         cache,
+        email_service,
         jwt_config.secret.clone(),
         jwt_config.access_token_expiration_hours,
         jwt_config.refresh_token_expiration_days,

@@ -3,6 +3,7 @@ pub struct Settings {
     pub database: DatabaseSettings,
     pub redis: RedisSettings,
     pub jwt: JwtSettings,
+    pub email: EmailSettings,
     pub application_host: String,
     pub application_port: u16
 }
@@ -29,6 +30,14 @@ pub struct JwtSettings {
     pub secret: String,
     pub access_token_expiration_hours: i64,
     pub refresh_token_expiration_days: i64,
+}
+
+#[derive(serde::Deserialize, Clone)]
+pub struct EmailSettings {
+    pub api_key: String,
+    pub from_email: String,
+    pub from_name: String,
+    pub base_url: String,
 }
 
 pub fn get_configuration() -> Result<Settings, config::ConfigError> {

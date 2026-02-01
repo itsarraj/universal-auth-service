@@ -57,7 +57,8 @@ pub async fn run() -> Result<(), Box<dyn std::error::Error>> {
                 let pool_data = web::Data::new(pool.clone());
                 let redis_data = web::Data::new(redis_pool.clone());
                 let jwt_config_clone = jwt_config.clone();
-                move |cfg| routes::config(cfg, pool_data, redis_data, jwt_config_clone)
+                let email_config_clone = configuration.email.clone();
+                move |cfg| routes::config(cfg, pool_data, redis_data, jwt_config_clone, email_config_clone)
             })
     })
         .bind(format!("{}:{}", configuration.application_host, configuration.application_port))?
